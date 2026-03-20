@@ -9,7 +9,7 @@ from typing import Callable, Optional, Tuple
 
 import torch as th
 import torch.nn.functional as thf
-from drtk.interpolate import interpolate
+from drtk.interpolate import interpolate, interpolate_ref
 from drtk.utils import index, load_torch_ops
 
 
@@ -151,10 +151,21 @@ def edge_grad_estimator_ref(
     """
     Python reference implementation for
     :func:`drtk.edge_grad_estimator`.
+
+    Unlike the primary implementation this reference version uses only pure PyTorch
+    operations (:func:`drtk.interpolate_ref`, standard math), so the entire forward
+    and backward pass is recorded by the autograd tape.  This means second-order
+    gradients are supported: gradients computed with ``create_graph=True`` can be
+    differentiated again, enabling Hessian-vector products and second-order
+    optimizers.
     """
 
-    # could use v_pix_img output from DRTK, but bary_img needs to be detached.
-    v_pix_img = interpolate(v_pix, vi, index_img, bary_img.detach())
+    # Use interpolate_ref (pure PyTorch) instead of the CUDA kernel so that the
+    # full pipeline remains differentiable under create_graph=True, enabling
+    # second-order gradient computation.
+    # bary_img is detached because gradients should flow through geometry (v_pix),
+    # not through barycentric coordinates.
+    v_pix_img = interpolate_ref(v_pix, vi, index_img, bary_img.detach())
     # pyre-fixme[16]: `EdgeGradEstimatorFunction` has no attribute `apply`.
     img = EdgeGradEstimatorFunction.apply(v_pix, v_pix_img, vi, img, index_img)
 
